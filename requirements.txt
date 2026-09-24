@@ -5,3 +5,6 @@ groq
 sentence-transformers
 chromadb
 pydantic
+pypdf
+python-docx
+tiktoken
