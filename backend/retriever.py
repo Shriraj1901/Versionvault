@@ -1,11 +1,19 @@
 import os
 os.environ["HF_HUB_OFFLINE"] = "1"
 
+from pathlib import Path
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-client = chromadb.PersistentClient(path="chroma_db")
+# Always points at the chroma_db folder in the project root,
+# no matter which folder you launch Python from.
+DB_PATH = str(Path(__file__).resolve().parent.parent / "chroma_db")
+
+client = chromadb.PersistentClient(path=DB_PATH)
 collection = client.get_or_create_collection(name="versiondocs")
+
+print(f"[retriever] DB path: {DB_PATH}")
+print(f"[retriever] Chunks in collection: {collection.count()}")
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -14,8 +22,7 @@ def search(query, version=None, top_k=3):
     """
     Embeds the user's query and searches the vector DB for the most
     similar chunks. If a version is given, results are filtered to
-    ONLY that version — this is what makes answers version-specific
-    instead of mixing up v1/v2/v3 content.
+    ONLY that version.
     """
     query_embedding = model.encode([query])[0].tolist()
 
@@ -46,7 +53,7 @@ def search(query, version=None, top_k=3):
 if __name__ == "__main__":
     query = "How do I authenticate?"
 
-    print(f"Query: \"{query}\"  (no version filter)\n")
+    print(f"\nQuery: \"{query}\"  (no version filter)\n")
     for m in search(query):
         print(f"  [{m['version']}/{m['source_file']}] (dist={m['distance']:.3f})  {m['text'][:70]}...")
 

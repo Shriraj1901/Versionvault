@@ -25,6 +25,8 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
+    broadened: bool
+    reasoning_log: list[str]
 
 
 @app.get("/health")
@@ -38,7 +40,11 @@ def ask_question(request: AskRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     try:
-        answer = ask(request.question, version=request.version)
-        return AskResponse(answer=answer)
+        result = ask(request.question, version=request.version)
+        return AskResponse(
+            answer=result["answer"],
+            broadened=result["broadened"],
+            reasoning_log=result["log"],
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Something went wrong: {e}")
