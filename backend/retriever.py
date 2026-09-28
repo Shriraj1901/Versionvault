@@ -50,13 +50,27 @@ def search(query, version=None, top_k=3):
     return matches
 
 
+def list_versions():
+    """Returns every version tag present in the collection, e.g. ['v1', 'v2', 'v3']."""
+    data = collection.get(include=["metadatas"])
+    return sorted({m["version"] for m in data["metadatas"]})
+
+
+def search_across_versions(query, per_version=2):
+    """
+    Searches each version separately and merges the results by distance,
+    so one version can't crowd the others out of the top results.
+    """
+    matches = []
+    for v in list_versions():
+        matches.extend(search(query, version=v, top_k=per_version))
+    matches.sort(key=lambda m: m["distance"])
+    return matches
+
+
 if __name__ == "__main__":
     query = "How do I authenticate?"
 
-    print(f"\nQuery: \"{query}\"  (no version filter)\n")
-    for m in search(query):
-        print(f"  [{m['version']}/{m['source_file']}] (dist={m['distance']:.3f})  {m['text'][:70]}...")
-
-    print(f"\nQuery: \"{query}\"  (filtered to v3 only)\n")
-    for m in search(query, version="v3"):
+    print(f"\nQuery: \"{query}\"  (per-version search)\n")
+    for m in search_across_versions(query):
         print(f"  [{m['version']}/{m['source_file']}] (dist={m['distance']:.3f})  {m['text'][:70]}...")

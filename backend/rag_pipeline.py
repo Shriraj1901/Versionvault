@@ -3,15 +3,15 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 
 from dotenv import load_dotenv
 from groq import Groq
-from retriever import search
+from retriever import search, search_across_versions
 
 load_dotenv()
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-# Measured on this corpus: genuine matches score up to ~1.42, while
-# near-domain questions the docs don't cover score from ~1.61 upward.
-# 1.5 sits inside that gap. Re-measure with evaluate.py when docs change.
+# Coarse filter only: catches clearly unrelated questions (measured 1.85+).
+# The LLM's NOT_IN_DOCS check is the fine judge for near-domain questions.
+# Re-measure with evaluate.py whenever the documents change.
 REFUSE_THRESHOLD = 1.8
 
 REFUSAL_MESSAGE = "I don't have enough information in the documentation to answer that confidently."
@@ -61,15 +61,20 @@ def _finalize(answer_text, log, broadened):
 def ask(query, version=None):
     """
     Agentic retrieval with two guardrails:
-    1. Distance check: weak retrieval is refused before calling the LLM.
+    1. Distance check: clearly unrelated questions are refused before calling the LLM.
     2. LLM check: the model answers NOT_IN_DOCS if the context lacks the answer.
-    If the scoped search is weak, the agent broadens (drops the version
-    filter) once before giving up.
+    If the scoped search is weak, the agent broadens (searches every version)
+    once before giving up. With no version selected, each version is searched
+    separately so one version can't crowd the others out of the results.
     """
     log = []
 
-    # Attempt 1: scoped to the requested version (if given)
-    chunks = search(query, version=version, top_k=3)
+    # Attempt 1: scoped to the requested version, or across all versions
+    if version:
+        chunks = search(query, version=version, top_k=3)
+    else:
+        chunks = search_across_versions(query, per_version=2)
+
     best = chunks[0]["distance"] if chunks else float("inf")
     log.append(f"Attempt 1 (version={version or 'any'}): best_distance={best:.3f}")
 
@@ -77,11 +82,11 @@ def ask(query, version=None):
         answer = _call_llm(build_prompt(query, chunks))
         return _finalize(answer, log, broadened=False)
 
-    # Attempt 2: broaden by dropping the version filter
+    # Attempt 2: broaden by searching every version
     if version:
-        chunks = search(query, version=None, top_k=3)
+        chunks = search_across_versions(query, per_version=2)
         best = chunks[0]["distance"] if chunks else float("inf")
-        log.append(f"Attempt 2 (broadened, no version filter): best_distance={best:.3f}")
+        log.append(f"Attempt 2 (broadened, all versions): best_distance={best:.3f}")
 
         if chunks and best <= REFUSE_THRESHOLD:
             note = (
